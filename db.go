@@ -410,8 +410,16 @@ func (db *DB) munmap() error {
 // mmapSize determines the appropriate size for the mmap given the current size
 // of the database. The minimum size is 32KB and doubles until it reaches 1GB.
 // Returns an error if the new mmap size is greater than the max allowed.
+// 在给定数据库当前大小的情况下确定 mmap 的适当大小。
+// 最小大小为 32KB，翻倍直到达到 1GB。
+// 如果 size 大于 1GB，就每次递增1GB
+// 还要确保递增后得到的值是pagesize的倍数，如果不是要扩大为倍数
+// 当然不能超过最大值 maxMapSize
 func (db *DB) mmapSize(size int) (int, error) {
 	// Double the size from 32KB until 1GB.
+	// 1<15 是32kb，以此是 64、128....1GB
+	// 这里是不是可以提前判断如果size大于1<<30,直接走1gb递增？
+	// 另外这里是不是可以不用循环，直接判断size当前大小？
 	for i := uint(15); i <= 30; i++ {
 		if size <= 1<<i {
 			return 1 << i, nil
@@ -425,12 +433,15 @@ func (db *DB) mmapSize(size int) (int, error) {
 
 	// If larger than 1GB then grow by 1GB at a time.
 	sz := int64(size)
+	// 每次递增到下一个1gb， 比如当前是(3gb-1),那么下一个得到结果就是3gb
 	if remainder := sz % int64(maxMmapStep); remainder > 0 {
 		sz += int64(maxMmapStep) - remainder
 	}
 
 	// Ensure that the mmap size is a multiple of the page size.
 	// This should always be true since we're incrementing in MBs.
+	// 保证分配的大小是 pageSize 的整数倍
+	// golang 两个整数想除得到的是去除小数点后的位数 3/2=1， 结果+1刚好得到是整数
 	pageSize := int64(db.pageSize)
 	if (sz % pageSize) != 0 {
 		sz = ((sz / pageSize) + 1) * pageSize
@@ -471,14 +482,22 @@ func (db *DB) mrelock(fileSizeFrom, fileSizeTo int) error {
 // init creates a new database file and initializes its meta pages.
 func (db *DB) init() error {
 	// Create two meta pages on a buffer.
+	// 为什么分配 4 页的容量?
+	// 前两页是meta页
 	buf := make([]byte, db.pageSize*4)
+	fmt.Printf("buf start:%p  end:%#x \n", buf, unsafe.Pointer(&buf[0]))
+	// 前两页是 meta
 	for i := 0; i < 2; i++ {
+		// 把之前申请的 buf 分配到 页
 		p := db.pageInBuffer(buf, pgid(i))
+		fmt.Printf("pageAddress p%d %p %#x %#x\n", i, p, int64(uintptr(unsafe.Pointer(&buf[0]))+uintptr(i)*uintptr(db.pageSize)), unsafe.Pointer(p))
 		p.id = pgid(i)
 		p.flags = metaPageFlag
 
 		// Initialize the meta page.
+		// 分配meta结构的内存
 		m := p.meta()
+		fmt.Printf("metaAddress m%d %p %#x\n", i, m, int64(uintptr(unsafe.Pointer(&buf[0]))+unsafe.Sizeof(*p)+uintptr(i)*uintptr(db.pageSize)))
 		m.magic = magic
 		m.version = version
 		m.pageSize = uint32(db.pageSize)
@@ -490,11 +509,13 @@ func (db *DB) init() error {
 	}
 
 	// Write an empty freelist at page 3.
+	// 第3页是保存空闲页的id列表，链表结构
 	p := db.pageInBuffer(buf, pgid(2))
 	p.id = pgid(2)
 	p.flags = freelistPageFlag
 	p.count = 0
 
+	// 第4页是叶子节点页(存储key-value数据)
 	// Write an empty leaf page at page 4.
 	p = db.pageInBuffer(buf, pgid(3))
 	p.id = pgid(3)
@@ -1169,16 +1190,17 @@ type Info struct {
 	PageSize int
 }
 
+// 占用 64 字节
 type meta struct {
-	magic    uint32
-	version  uint32
-	pageSize uint32
-	flags    uint32
-	root     bucket
-	freelist pgid
-	pgid     pgid
-	txid     txid
-	checksum uint64
+	magic    uint32 // 4
+	version  uint32 // 4
+	pageSize uint32 // 4
+	flags    uint32 // 4
+	root     bucket // 16
+	freelist pgid   // 8
+	pgid     pgid   // 8
+	txid     txid   // 8
+	checksum uint64 // 8
 }
 
 // validate checks the marker bytes and version of the meta page to ensure it matches this binary.
@@ -1220,6 +1242,7 @@ func (m *meta) write(p *page) {
 // generates the checksum for the meta.
 func (m *meta) sum64() uint64 {
 	var h = fnv.New64a()
+	// 把 m 结构体，除了 checksum 字段多有的内容进行校验和
 	_, _ = h.Write((*[unsafe.Offsetof(meta{}.checksum)]byte)(unsafe.Pointer(m))[:])
 	return h.Sum64()
 }

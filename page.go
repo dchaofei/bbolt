@@ -27,6 +27,7 @@ const (
 
 type pgid uint64
 
+// 共 16 字节
 type page struct {
 	id       pgid
 	flags    uint16
