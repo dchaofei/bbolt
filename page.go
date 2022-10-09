@@ -30,8 +30,8 @@ type pgid uint64
 // 共 16 字节
 type page struct {
 	id       pgid
-	flags    uint16
-	count    uint16
+	flags    uint16 // 标志位，不同类型的页面用不同的标志位来区分。分为：metaPageFlag、freelistPageFlag、branchPageFlag、leafPageFlag。
+	count    uint16 // 页面中存储的数据数量，仅在页面类型是branch以及leaf的时候起作用。
 	overflow uint32
 }
 

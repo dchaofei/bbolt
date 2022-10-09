@@ -123,8 +123,12 @@ func (f *freelist) mergeWithExistingSpan(pid pgid) {
 }
 
 func (f *freelist) addSpan(start pgid, size uint64) {
+	// 记录连续页的结束页
 	f.backwardMap[start-1+pgid(size)] = size
+	// 记录连续页的开始页页
 	f.forwardMap[start] = size
+
+	// 记录连续页的数量与连续页的开始页的映射
 	if _, ok := f.freemaps[size]; !ok {
 		f.freemaps[size] = make(map[pgid]struct{})
 	}
@@ -161,16 +165,22 @@ func (f *freelist) init(pgids []pgid) {
 
 	for i := 1; i < len(pgids); i++ {
 		// continuous page
+		// 当前页id == 上一页id+1 那就代表这两个页是连续的
+		// size 就是记录连续的页数量
 		if pgids[i] == pgids[i-1]+1 {
 			size++
 		} else {
+			// 如果当前页与上一页不再连续就记录下来
 			f.addSpan(start, size)
 
+			// 把连续数量致为1
 			size = 1
+			// 开始页是当前页
 			start = pgids[i]
 		}
 	}
 
+	// 记录最后页，有可能有连续页也有可能没连续页
 	// init the tail
 	if size != 0 && start != 0 {
 		f.addSpan(start, size)

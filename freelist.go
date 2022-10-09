@@ -20,13 +20,27 @@ type pidSet map[pgid]struct{}
 // freelist represents a list of all pages that are available for allocation.
 // It also tracks pages that have been freed but are still in use by open transactions.
 type freelist struct {
-	freelistType   FreelistType                // freelist type
-	ids            []pgid                      // all free and available free page ids.
-	allocs         map[pgid]txid               // mapping of txid that allocated a pgid.
-	pending        map[txid]*txPending         // mapping of soon-to-be free page ids by tx.
-	cache          map[pgid]bool               // fast lookup of all free and pending page ids.
-	freemaps       map[uint64]pidSet           // key is the size of continuous pages(span), value is a set which contains the starting pgids of same size
-	forwardMap     map[pgid]uint64             // key is start pgid, value is its span size
+	freelistType FreelistType        // freelist type
+	ids          []pgid              // all free and available free page ids.
+	allocs       map[pgid]txid       // mapping of txid that allocated a pgid.
+	pending      map[txid]*txPending // mapping of soon-to-be free page ids by tx.
+	cache        map[pgid]bool       // fast lookup of all free and pending page ids.
+
+	// 存储连续页面， key是有几个连续页面，value 是连续页面开始的pid集合
+	// 比如有以下页面id：1,2,3,4, 8,9,10,11 15,16
+	// 那么 freemaps结构就是
+	//	map[uint64]pidSet{}{
+	//		4: {1:{}, 8:{}},    包含4个连续页的是 （1，2，3，4） (8，9，10，11)， 只存连续页开始的id 1，8
+	//		2: {15:{}}  包含2个连续页的是 （15，16）， 只存连续页开始的 id 15
+	//	}
+	freemaps map[uint64]pidSet // key is the size of continuous pages(span), value is a set which contains the starting pgids of same size
+
+	// key 是连续页开始的id，value是有多少连续页
+	forwardMap map[pgid]uint64 // key is start pgid, value is its span size
+	// key 是连续页结束的id， value是有多少连续页
+	// 所以加入 一个连续页开始id是4，连续数量是3那么存储结构应该是
+	// forwardMap:map[pgid]uint64{4:3}
+	// backwardMap:map[pgid]uint64{6:3}
 	backwardMap    map[pgid]uint64             // key is end pgid, value is its span size
 	allocate       func(txid txid, n int) pgid // the freelist allocate func
 	free_count     func() int                  // the function which gives you free page number
@@ -270,6 +284,8 @@ func (f *freelist) read(p *page) {
 	var idx, count = 0, int(p.count)
 	if count == 0xFFFF {
 		idx = 1
+		// 如果空闲页个数超出了 0xFFFF（因为page.count 是 uint64 最大是 0xFFFF），那么空闲数组的第一个元素将存储的是空闲页的个数，负责数组的个数存在 page.count
+		// https://jaydenwen123.github.io/boltdb/chapter2/%E7%A9%BA%E9%97%B2%E5%88%97%E8%A1%A8%E9%A1%B5.html
 		c := *(*pgid)(unsafeAdd(unsafe.Pointer(p), unsafe.Sizeof(*p)))
 		count = int(c)
 		if count < 0 {
@@ -282,10 +298,13 @@ func (f *freelist) read(p *page) {
 		f.ids = nil
 	} else {
 		var ids []pgid
+		// 获取空闲数组内存启始地址
 		data := unsafeIndex(unsafe.Pointer(p), unsafe.Sizeof(*p), unsafe.Sizeof(ids[0]), idx)
+		// 把空闲数组内存转为 slice 给到 ids
 		unsafeSlice(unsafe.Pointer(&ids), data, count)
 
 		// copy the ids, so we don't modify on the freelist page directly
+		// copy ids， 应为上边的ids是直接引用的内存，如果之后排序会影响到freelist
 		idsCopy := make([]pgid, count)
 		copy(idsCopy, ids)
 		// Make sure they're sorted.

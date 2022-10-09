@@ -2,36 +2,40 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"log"
 	"time"
 )
 
 func main() {
-	//os.Remove("my.db")
 	db, err := bolt.Open("my.db", 0600, &bolt.Options{
-		Timeout:         3 * time.Second,
-		NoGrowSync:      false,
-		NoFreelistSync:  false,
-		FreelistType:    "",
-		ReadOnly:        false,
-		MmapFlags:       0,
-		InitialMmapSize: 65537,
-		NoSync:          false,
-		OpenFile:        nil,
-		Mlock:           false,
+		Timeout:        3 * time.Second,
+		NoGrowSync:     false,
+		NoFreelistSync: false,
+		FreelistType:   "",
+		ReadOnly:       false,
+		MmapFlags:      0,
+		NoSync:         false,
+		OpenFile:       nil,
+		Mlock:          false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer db.Close()
+	fmt.Println("test")
 	//err = db.Update(func(tx *bolt.Tx) error {
 	//	_, err := tx.CreateBucket([]byte("ding"))
 	//	return err
 	//})
 	//checkErr(err)
-	return
+	//s := new(runtime.MemStats)
+	//runtime.ReadMemStats(s)
+	//fmt.Printf("%+v\n", s.Sys)
+	//fmt.Printf("%+v\n", s.HeapAlloc)
+	//time.Sleep(2 * time.Hour)
 
 	//db.View(func(tx *bolt.Tx) error {
 	//	f, err := os.OpenFile("back.db", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)

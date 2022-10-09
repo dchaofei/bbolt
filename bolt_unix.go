@@ -66,6 +66,8 @@ func mmap(db *DB, sz int) error {
 
 	// Save the original byte slice and convert to a byte array pointer.
 	db.dataref = b
+	//这里使用 maxMapSize 岂不是把不属于他的内存地址也拿过来了？但事实是读取大于 sz 部分会报错 [signal SIGSEGV: segmentation violation
+	// https://www.cnblogs.com/huxiao-tee/p/4660352.html
 	db.data = (*[maxMapSize]byte)(unsafe.Pointer(&b[0]))
 	db.datasz = sz
 	return nil

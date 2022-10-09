@@ -129,10 +129,10 @@ type DB struct {
 	path     string
 	openFile func(string, int, os.FileMode) (*os.File, error)
 	file     *os.File
-	dataref  []byte // mmap'ed readonly, write throws SEGV
-	data     *[maxMapSize]byte
-	datasz   int
-	filesz   int // current on disk file size
+	dataref  []byte            // mmap'ed readonly, write throws SEGV  mmap映射的内存区域，仅可读
+	data     *[maxMapSize]byte // 把mmap映射的内存赋值给这个数组，超出 datasz 可能是其他变量分配的内存，不能去使用
+	datasz   int               // 映射的数据大小
+	filesz   int               // current on disk file size
 	meta0    *meta
 	meta1    *meta
 	pageSize int
@@ -294,6 +294,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 	// Flush freelist when transitioning from no sync to sync so
 	// NoFreelistSync unaware boltdb can open the db later.
+	//@question: 这个场景怎么复现？
 	if !db.NoFreelistSync && !db.hasSyncedFreelist() {
 		tx, err := db.Begin(true)
 		if tx != nil {
@@ -315,6 +316,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 func (db *DB) loadFreelist() {
 	db.freelistLoad.Do(func() {
 		db.freelist = newFreelist(db.FreelistType)
+		//@question: 怎么走 !db.hasSyncedFreelist 这个场景？
 		if !db.hasSyncedFreelist() {
 			// Reconstruct free list by scanning the DB.
 			db.freelist.readIDs(db.freepages())
@@ -356,34 +358,43 @@ func (db *DB) mmap(minsz int) error {
 
 	if db.Mlock {
 		// Unlock db memory
+		// 解锁物理内存：
+		// 对应的是 mlock 允许程序在物理内存上锁住它的部分或全部地址空间。这将阻止Linux 将这个内存页调度到交换空间（swap space），即使该程序已有一段时间没有访问这段空间。因为换到交换空间会影响性能和不安全性
+		// https://blog.csdn.net/fjt19900921/article/details/8074541
 		if err := db.munlock(fileSize); err != nil {
 			return err
 		}
 	}
 
 	// Dereference all mmap references before unmapping.
+	// 对 go 结构体绑定的 mmap 映射的内存解引用，重新mmap之后会不会再关联？
 	if db.rwtx != nil {
 		db.rwtx.root.dereference()
 	}
 
 	// Unmap existing data before continuing.
+	// munmap  释放之前的 mmap
 	if err := db.munmap(); err != nil {
 		return err
 	}
 
 	// Memory-map the data file as a byte slice.
+	// 根据现有大小重新 mmap
 	if err := mmap(db, size); err != nil {
 		return err
 	}
 
 	if db.Mlock {
 		// Don't allow swapping of data file
+		// 锁定内存，不让这块内存换出到磁盘空间
+		// https://zhuanlan.zhihu.com/p/192352179：如果没有RAM是空闲的，它可以使用一些替换算法选择现有页面，并将其保存到磁盘（此过程称为分页）。
 		if err := db.mlock(fileSize); err != nil {
 			return err
 		}
 	}
 
 	// Save references to the meta pages.
+	// 获取对meta页的引用，这不会分配新的内存
 	db.meta0 = db.page(0).meta()
 	db.meta1 = db.page(1).meta()
 
@@ -1198,8 +1209,8 @@ type meta struct {
 	flags    uint32 // 4
 	root     bucket // 16
 	freelist pgid   // 8
-	pgid     pgid   // 8
-	txid     txid   // 8
+	pgid     pgid   // 8 保存当前总的页面数量，即最大页面号加一。
+	txid     txid   // 8 上一次写数据库的事务ID，可以看作是当前boltdb的修改版本号，每次写数据库时加1，只读时不改变
 	checksum uint64 // 8
 }
 
