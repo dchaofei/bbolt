@@ -14,6 +14,31 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+func TestSearchPage(t *testing.T) {
+	ele := [][]byte{[]byte("a"), []byte("b"), []byte("d"), []byte("e"), []byte("f")}
+	exist := false
+	index := sort.Search(len(ele), func(i int) bool {
+		// 找到key<=索引节点的最高索引
+		// 比如 索引节点是 a，b，d，e，f
+		// 要找的key是b，那么找到的结果就是 b 所在的位置 1
+		// 要找的key是c，那么找到的结果就是 d 所在的位置 2
+		// TODO(benbjohnson): Optimize this range search. It's a bit hacky right now.
+		// sort.Search() finds the lowest index where f() != -1 but we need the highest index.
+
+		ret := bytes.Compare(ele[i], []byte("c"))
+		if ret == 0 {
+			exist = true
+		}
+		return ret != -1
+	})
+
+	fmt.Println(index)
+	if !exist && index > 0 {
+		index--
+	}
+	fmt.Println(index, string(ele[index]), exist)
+}
+
 // Ensure that a cursor can return a reference to the bucket that created it.
 func TestCursor_Bucket(t *testing.T) {
 	db := MustOpenDB()

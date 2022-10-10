@@ -246,6 +246,7 @@ func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
 // search recursively performs a binary search against a given page/node until it finds a given key.
 func (c *Cursor) search(key []byte, pgid pgid) {
 	p, n := c.bucket.pageNode(pgid)
+	// 如果找到的页不是 分支页或叶子节点页 panic
 	if p != nil && (p.flags&(branchPageFlag|leafPageFlag)) == 0 {
 		panic(fmt.Sprintf("invalid page type: %d: %x", p.id, p.flags))
 	}
@@ -289,8 +290,13 @@ func (c *Cursor) searchPage(key []byte, p *page) {
 	// Binary search for the correct range.
 	inodes := p.branchPageElements()
 
+	// true 代表key==索引节点上的key
 	var exact bool
 	index := sort.Search(int(p.count), func(i int) bool {
+		// 找到key<=索引节点key的最高索引
+		// 比如 索引节点是 a，b，d，e，f
+		// 要找的key是b，那么找到的结果就是 b 所在的 index 位置 1
+		// 要找的key是c，那么找到的结果就是 d 所在的 index 位置 2
 		// TODO(benbjohnson): Optimize this range search. It's a bit hacky right now.
 		// sort.Search() finds the lowest index where f() != -1 but we need the highest index.
 		ret := bytes.Compare(inodes[i].key(), key)

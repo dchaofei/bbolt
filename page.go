@@ -78,6 +78,7 @@ func (p *page) branchPageElement(index uint16) *branchPageElement {
 }
 
 // branchPageElements retrieves a list of branch nodes.
+// 返回当前索引页的所有索引数组
 func (p *page) branchPageElements() []branchPageElement {
 	if p.count == 0 {
 		return nil
@@ -109,6 +110,8 @@ type branchPageElement struct {
 
 // key returns a byte slice of the node key.
 func (n *branchPageElement) key() []byte {
+	// 在这个索引元素里找到他的key
+	//@question: 猜测key存在哪里？ 一个页前半部分是 branchPageElement 数组，后半部分是key，通过 branchPageElement 里的位置可以找到key？
 	return unsafeByteSlice(unsafe.Pointer(n), 0, int(n.pos), int(n.pos)+int(n.ksize))
 }
 
@@ -149,6 +152,9 @@ func (s pgids) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pgids) Less(i, j int) bool { return s[i] < s[j] }
 
 // merge returns the sorted union of a and b.
+// 合并两个数组，并排序
+// 为什么不直接把两个都塞到slice，然后 sort 一下呢？
+// 跑了 benchmark，确实 作者这种合并方式要性能高点
 func (a pgids) merge(b pgids) pgids {
 	// Return the opposite slice if one is nil.
 	if len(a) == 0 {

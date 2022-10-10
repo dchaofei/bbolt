@@ -137,8 +137,8 @@ type DB struct {
 	meta1    *meta
 	pageSize int
 	opened   bool
-	rwtx     *Tx
-	txs      []*Tx
+	rwtx     *Tx   // 当前处于读写的事务
+	txs      []*Tx // 只读事物事务集合
 	stats    Stats
 
 	freelist     *freelist
@@ -646,6 +646,7 @@ func (db *DB) beginTx() (*Tx, error) {
 	t.init(db)
 
 	// Keep track of transaction until it closes.
+	// 跟踪只读事务，把当前的只读事务存到 db.txs
 	db.txs = append(db.txs, t)
 	n := len(db.txs)
 
@@ -653,6 +654,7 @@ func (db *DB) beginTx() (*Tx, error) {
 	db.metalock.Unlock()
 
 	// Update the transaction stats.
+	//@issue 这里加锁只为了统计信息会不会耗费性能？虽然锁里的操作很简单
 	db.statlock.Lock()
 	db.stats.TxN++
 	db.stats.OpenTxN = n
@@ -699,13 +701,17 @@ func (db *DB) freePages() {
 		minid = db.txs[0].meta.txid
 	}
 	if minid > 0 {
+		//@question: 这里没看懂，为什么要释放最小的只读事务之前的事务使用的空闲页
+		// 是因为在他之前的事务都已经提交了，所以空闲页可以释放了吗？
 		db.freelist.release(minid - 1)
 	}
 	// Release unused txid extents.
 	for _, t := range db.txs {
+		//@question: 这里也是暂时没看懂
 		db.freelist.releaseRange(minid, t.meta.txid-1)
 		minid = t.meta.txid + 1
 	}
+	//@question: 这里也是暂时没看懂
 	db.freelist.releaseRange(minid, txid(0xFFFFFFFFFFFFFFFF))
 	// Any page both allocated and freed in an extent is safe to release.
 }
@@ -1207,7 +1213,7 @@ type meta struct {
 	version  uint32 // 4
 	pageSize uint32 // 4
 	flags    uint32 // 4
-	root     bucket // 16
+	root     bucket // 16 根 bucket
 	freelist pgid   // 8
 	pgid     pgid   // 8 保存当前总的页面数量，即最大页面号加一。
 	txid     txid   // 8 上一次写数据库的事务ID，可以看作是当前boltdb的修改版本号，每次写数据库时加1，只读时不改变

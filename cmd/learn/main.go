@@ -25,6 +25,28 @@ func main() {
 	}
 
 	defer db.Close()
+
+	tx, err := db.Begin(true)
+	c, err := tx.CreateBucketIfNotExists([]byte("a"))
+	checkErr(err)
+	err = c.Put([]byte("aa"), []byte("bb"))
+	err = c.Put([]byte("cc"), []byte("bb"))
+	err = c.Put([]byte("dd"), []byte("bb"))
+	err = c.Put([]byte("ee"), []byte("bb"))
+	err = c.Put([]byte("ff"), []byte("bb"))
+	checkErr(err)
+	checkErr(tx.Commit())
+
+	tx, err = db.Begin(true)
+	c, err = tx.CreateBucketIfNotExists([]byte("b"))
+	checkErr(err)
+	err = c.Put([]byte("aa"), []byte("bb"))
+	err = c.Put([]byte("cc"), []byte("bb"))
+	err = c.Put([]byte("dd"), []byte("bb"))
+	err = c.Put([]byte("ee"), []byte("bb"))
+	err = c.Put([]byte("ff"), []byte("bb"))
+	checkErr(err)
+	checkErr(tx.Commit())
 	fmt.Println("test")
 	//err = db.Update(func(tx *bolt.Tx) error {
 	//	_, err := tx.CreateBucket([]byte("ding"))

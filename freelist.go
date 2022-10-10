@@ -38,7 +38,7 @@ type freelist struct {
 	// key 是连续页开始的id，value是有多少连续页
 	forwardMap map[pgid]uint64 // key is start pgid, value is its span size
 	// key 是连续页结束的id， value是有多少连续页
-	// 所以加入 一个连续页开始id是4，连续数量是3那么存储结构应该是
+	// 所以假如 一个连续页开始id是4，连续数量是3那么存储结构应该是
 	// forwardMap:map[pgid]uint64{4:3}
 	// backwardMap:map[pgid]uint64{6:3}
 	backwardMap    map[pgid]uint64             // key is end pgid, value is its span size
@@ -206,6 +206,7 @@ func (f *freelist) release(txid txid) {
 			delete(f.pending, tid)
 		}
 	}
+	// 把新的空闲出来 pids 合并到 空闲列表，并更新span
 	f.mergeSpans(m)
 }
 

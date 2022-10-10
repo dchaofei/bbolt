@@ -47,6 +47,45 @@ func TestPgids_merge(t *testing.T) {
 	}
 }
 
+// go test -benchmem -test.bench "MergeBy*" -test.run "MergeBy*"
+func BenchmarkMergeBySort(t *testing.B) {
+	for i := 0; i < t.N; i++ {
+		a := pgids{4, 5, 6, 10, 11, 12, 13, 27}
+		b := pgids{1, 3, 8, 9, 25, 30}
+		c := append(a, b...)
+		sort.Sort(c)
+		if !reflect.DeepEqual(c, pgids{1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 25, 27, 30}) {
+			t.Errorf("mismatch: %v", c)
+		}
+
+		a = pgids{4, 5, 6, 10, 11, 12, 13, 27, 35, 36}
+		b = pgids{8, 9, 25, 30}
+		c = append(a, b...)
+		sort.Sort(c)
+		if !reflect.DeepEqual(c, pgids{4, 5, 6, 8, 9, 10, 11, 12, 13, 25, 27, 30, 35, 36}) {
+			t.Errorf("mismatch: %v", c)
+		}
+	}
+}
+
+func BenchmarkMergeByBinary(t *testing.B) {
+	for i := 0; i < t.N; i++ {
+		a := pgids{4, 5, 6, 10, 11, 12, 13, 27}
+		b := pgids{1, 3, 8, 9, 25, 30}
+		c := a.merge(b)
+		if !reflect.DeepEqual(c, pgids{1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 25, 27, 30}) {
+			t.Errorf("mismatch: %v", c)
+		}
+
+		a = pgids{4, 5, 6, 10, 11, 12, 13, 27, 35, 36}
+		b = pgids{8, 9, 25, 30}
+		c = a.merge(b)
+		if !reflect.DeepEqual(c, pgids{4, 5, 6, 8, 9, 10, 11, 12, 13, 25, 27, 30, 35, 36}) {
+			t.Errorf("mismatch: %v", c)
+		}
+	}
+}
+
 func TestPgids_merge_quick(t *testing.T) {
 	if err := quick.Check(func(a, b pgids) bool {
 		// Sort incoming lists.

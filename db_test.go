@@ -269,6 +269,7 @@ func TestOpen_Size(t *testing.T) {
 
 	// Compare the original size with the new size.
 	// db size might increase by a few page sizes due to the new small update.
+	// @question: 表示不太理解 回头结合这个pr看一下：https://github.com/boltdb/bolt/pull/453?
 	if sz < newSz-5*int64(pagesize) {
 		t.Fatalf("unexpected file growth: %d => %d", sz, newSz)
 	}
