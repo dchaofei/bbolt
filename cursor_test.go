@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	bolt "go.etcd.io/bbolt"
 	"log"
 	"os"
 	"reflect"
 	"sort"
 	"testing"
 	"testing/quick"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 func TestSearchPage(t *testing.T) {

@@ -27,26 +27,46 @@ func main() {
 	defer db.Close()
 
 	tx, err := db.Begin(true)
-	c, err := tx.CreateBucketIfNotExists([]byte("a"))
-	checkErr(err)
-	err = c.Put([]byte("aa"), []byte("bb"))
-	err = c.Put([]byte("cc"), []byte("bb"))
-	err = c.Put([]byte("dd"), []byte("bb"))
-	err = c.Put([]byte("ee"), []byte("bb"))
-	err = c.Put([]byte("ff"), []byte("bb"))
-	checkErr(err)
-	checkErr(tx.Commit())
+	//c, err := tx.CreateBucketIfNotExists([]byte("a"))
+	//checkErr(err)
+	//_ = c
+	//
+	//c2, err := tx.CreateBucketIfNotExists([]byte("b"))
+	//checkErr(err)
+	//_ = c2
+	//
+	//c3, err := tx.CreateBucketIfNotExists([]byte("f"))
+	//checkErr(err)
+	//_ = c3
 
-	tx, err = db.Begin(true)
-	c, err = tx.CreateBucketIfNotExists([]byte("b"))
+	b4, err := tx.CreateBucketIfNotExists([]byte("d"))
 	checkErr(err)
-	err = c.Put([]byte("aa"), []byte("bb"))
-	err = c.Put([]byte("cc"), []byte("bb"))
-	err = c.Put([]byte("dd"), []byte("bb"))
-	err = c.Put([]byte("ee"), []byte("bb"))
-	err = c.Put([]byte("ff"), []byte("bb"))
-	checkErr(err)
+	//b4.CreateBucket([]byte("a"))
+
+	b4.CreateBucket([]byte("dd"))
+	//
+	//err = b4.Put([]byte("dd"), []byte("ddvalue"))
+	//checkErr(err)
+	_ = b4
+
+	//err = c.Put([]byte("aa"), []byte("bb"))
+	//err = c.Put([]byte("cc"), []byte("bb"))
+	//err = c.Put([]byte("dd"), []byte("bb"))
+	//err = c.Put([]byte("ee"), []byte("bb"))
+	//err = c.Put([]byte("ff"), []byte("bb"))
+	//checkErr(err)
 	checkErr(tx.Commit())
+	//
+	//tx, err = db.Begin(true)
+	//c, err = tx.CreateBucketIfNotExists([]byte("b"))
+	//checkErr(err)
+	//err = c.Put([]byte("aa"), []byte("bb"))
+	//err = c.Put([]byte("cc"), []byte("bb"))
+	//err = c.Put([]byte("dd"), []byte("bb"))
+	//err = c.Put([]byte("ee"), []byte("bb"))
+	//err = c.Put([]byte("ff"), []byte("bb"))
+	//checkErr(err)
+	//checkErr(tx.Commit())
 	fmt.Println("test")
 	//err = db.Update(func(tx *bolt.Tx) error {
 	//	_, err := tx.CreateBucket([]byte("ding"))

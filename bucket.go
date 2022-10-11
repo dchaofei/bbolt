@@ -124,7 +124,7 @@ func (b *Bucket) openBucket(value []byte) *Bucket {
 	var child = newBucket(b.tx)
 
 	// Unaligned access requires a copy to be made.
-	const unalignedMask = unsafe.Alignof(struct {
+	const unalignedMask = unsafe.Alignof(struct { //@question: 不理解
 		bucket
 		page
 	}{}) - 1
@@ -164,7 +164,7 @@ func (b *Bucket) CreateBucket(key []byte) (*Bucket, error) {
 
 	// Move cursor to correct position.
 	c := b.Cursor()
-	k, _, flags := c.seek(key)
+	k, _, flags := c.seek(key) // 根据key查找是不是有这个桶
 
 	// Return an error if there is an existing key.
 	if bytes.Equal(key, k) {
@@ -705,6 +705,10 @@ func (b *Bucket) dereference() {
 func (b *Bucket) pageNode(id pgid) (*page, *node) {
 	// Inline buckets have a fake page embedded in their value so treat them
 	// differently. We'll return the rootNode (if available) or the fake page.
+	// root 等于0代表是内联页，即没有开新的页面而是把 数据存到桶的 key 对应的 value 里了
+	// 当一个桶同时满足下面两个条件时，就可以内联处理
+	// a.当前桶没有嵌套子桶
+	// b.当前桶内的元素所占的总字小于1/4页大小
 	if b.root == 0 {
 		if id != 0 {
 			panic(fmt.Sprintf("inline bucket non-zero page access(2): %d != 0", id))

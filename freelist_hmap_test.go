@@ -1,9 +1,22 @@
 package bbolt
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
+	"unsafe"
 )
+
+func TestA(t *testing.T) {
+	const unalignedMask = unsafe.Alignof(struct {
+		bucket
+		page
+	}{})
+	fmt.Println(unalignedMask)
+	fmt.Printf("%b\n\n", unalignedMask)
+	fmt.Println(unalignedMask - 1)
+	fmt.Printf("%b\n", unalignedMask-1)
+}
 
 func Test_freelist_Init(t *testing.T) {
 	type fields struct {

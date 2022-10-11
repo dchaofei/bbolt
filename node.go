@@ -8,6 +8,7 @@ import (
 )
 
 // node represents an in-memory, deserialized page.
+// 是页的内存中表示，node 是由页转换而来
 type node struct {
 	bucket     *Bucket
 	isLeaf     bool
@@ -17,7 +18,7 @@ type node struct {
 	pgid       pgid
 	parent     *node
 	children   nodes
-	inodes     inodes
+	inodes     inodes // 页中存取的元素
 }
 
 // root returns the top-level node this node is attached to.
@@ -38,6 +39,7 @@ func (n *node) minKeys() int {
 
 // size returns the size of the node after serialization.
 func (n *node) size() int {
+	// 页头大小+每个元素大小+key+value
 	sz, elsz := pageHeaderSize, n.pageElementSize()
 	for i := 0; i < len(n.inodes); i++ {
 		item := &n.inodes[i]
@@ -129,7 +131,7 @@ func (n *node) put(oldKey, newKey, value []byte, pgid pgid, flags uint32) {
 	exact := (len(n.inodes) > 0 && index < len(n.inodes) && bytes.Equal(n.inodes[index].key, oldKey))
 	if !exact {
 		n.inodes = append(n.inodes, inode{})
-		copy(n.inodes[index+1:], n.inodes[index:])
+		copy(n.inodes[index+1:], n.inodes[index:]) // 插入一个节点： 先 append 一个，然后把index后的节点复制到 index+1， index 就变成了要插入的位置
 	}
 
 	inode := &n.inodes[index]

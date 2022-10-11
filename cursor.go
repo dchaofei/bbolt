@@ -245,6 +245,7 @@ func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
 
 // search recursively performs a binary search against a given page/node until it finds a given key.
 func (c *Cursor) search(key []byte, pgid pgid) {
+	// 找到页或node，页可以转换为node，node不存在时先拿到页，后续操作会转换成node缓存起来（c.bucket.node），下次再找拿到的就是node
 	p, n := c.bucket.pageNode(pgid)
 	// 如果找到的页不是 分支页或叶子节点页 panic
 	if p != nil && (p.flags&(branchPageFlag|leafPageFlag)) == 0 {
@@ -259,6 +260,7 @@ func (c *Cursor) search(key []byte, pgid pgid) {
 		return
 	}
 
+	//@question: 这里应该是索引节点才会走到这里，还没有追踪到这段代码，先不看
 	if n != nil {
 		c.searchNode(key, n)
 		return
@@ -294,7 +296,7 @@ func (c *Cursor) searchPage(key []byte, p *page) {
 	var exact bool
 	index := sort.Search(int(p.count), func(i int) bool {
 		// 找到key<=索引节点key的最高索引
-		// 比如 索引节点是 a，b，d，e，f
+		// 比如 索引节点有 a，b，d，e，f
 		// 要找的key是b，那么找到的结果就是 b 所在的 index 位置 1
 		// 要找的key是c，那么找到的结果就是 d 所在的 index 位置 2
 		// TODO(benbjohnson): Optimize this range search. It's a bit hacky right now.
@@ -320,6 +322,7 @@ func (c *Cursor) nsearch(key []byte) {
 	p, n := e.page, e.node
 
 	// If we have a node then search its inodes.
+	// 从节点元素 inodes 中查找key是否存在，不存在就返回适合插入的位置存到栈顶
 	if n != nil {
 		index := sort.Search(len(n.inodes), func(i int) bool {
 			return bytes.Compare(n.inodes[i].key, key) != -1
@@ -329,6 +332,7 @@ func (c *Cursor) nsearch(key []byte) {
 	}
 
 	// If we have a page then search its leaf elements.
+	// 从页中查找key是否存在，不存在就返回适合插入的位置  ps：可能是第一次访问这个页才会走到这里，后续应该会走到上边的节点搜索里，因为后续页转换为了节点存了起来
 	inodes := p.leafPageElements()
 	index := sort.Search(int(p.count), func(i int) bool {
 		return bytes.Compare(inodes[i].key(), key) != -1
@@ -337,21 +341,26 @@ func (c *Cursor) nsearch(key []byte) {
 }
 
 // keyValue returns the key and value of the current leaf element.
+// 使用从栈顶拿到查找到的index来获取 key value
 func (c *Cursor) keyValue() ([]byte, []byte, uint32) {
 	ref := &c.stack[len(c.stack)-1]
 
 	// If the cursor is pointing to the end of page/node then return nil.
+	// ref.count() == 0 表示这个页或节点是空的
+	//  ref.index >= ref.count() 表示已经遍历到最后也没找到这个key
 	if ref.count() == 0 || ref.index >= ref.count() {
 		return nil, nil, 0
 	}
 
 	// Retrieve value from node.
+	// 根据 index 从节点中获取 key value
 	if ref.node != nil {
 		inode := &ref.node.inodes[ref.index]
 		return inode.key, inode.value, inode.flags
 	}
 
 	// Or retrieve value from page.
+	// 根据 index 从页元素中 key value
 	elem := ref.page.leafPageElement(uint16(ref.index))
 	return elem.key(), elem.value(), elem.flags
 }
@@ -361,6 +370,7 @@ func (c *Cursor) node() *node {
 	_assert(len(c.stack) > 0, "accessing a node with a zero-length cursor stack")
 
 	// If the top of the stack is a leaf node then just return it.
+	// 如果栈顶是页节点，直接返回
 	if ref := &c.stack[len(c.stack)-1]; ref.node != nil && ref.isLeaf() {
 		return ref.node
 	}
@@ -370,6 +380,7 @@ func (c *Cursor) node() *node {
 	if n == nil {
 		n = c.bucket.node(c.stack[0].page.id, nil)
 	}
+	//@question：从栈底部的根节点开始，一直找到最顶节点，为了什么，为了加载父子级结构吗？为了把 page 转成 node？
 	for _, ref := range c.stack[:len(c.stack)-1] {
 		_assert(!n.isLeaf, "expected branch node")
 		n = n.childAt(ref.index)
