@@ -28,6 +28,7 @@ func (c *Cursor) Bucket() *Bucket {
 // First moves the cursor to the first item in the bucket and returns its key and value.
 // If the bucket is empty then a nil key and value are returned.
 // The returned key and value are only valid for the life of the transaction.
+// 将光标移动到第一个叶子节点元素，并返会k，v
 func (c *Cursor) First() (key []byte, value []byte) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 	c.stack = c.stack[:0]
@@ -37,11 +38,17 @@ func (c *Cursor) First() (key []byte, value []byte) {
 
 	// If we land on an empty page then move to the next value.
 	// https://github.com/boltdb/bolt/issues/450
+
+	// 第一个叶子节点是空的，那就移到下一个叶子节点
+	// @question: 那么问题来了, b+树叶子节点怎么会没有值呢？b+树不是不允许叶子节点为空吗？
+	// 猜测这是因为在同一个事务内删除了叶子节点元素，因为事务还没有提交，所以b+树节点没有重新平衡，所以导致节点异常了
+	// pr: https://github.com/boltdb/bolt/pull/452
 	if c.stack[len(c.stack)-1].count() == 0 {
 		c.next()
 	}
 
 	k, v, flags := c.keyValue()
+	// 如果找到的是桶只返回key
 	if (flags & uint32(bucketLeafFlag)) != 0 {
 		return k, nil
 	}
@@ -59,7 +66,15 @@ func (c *Cursor) Last() (key []byte, value []byte) {
 	ref := elemRef{page: p, node: n}
 	ref.index = ref.count() - 1
 	c.stack = append(c.stack, ref)
+	// @question: last会什么没有出现 First 中异常节点的问题？
+	// 哈哈，果然这里是存在异常节点的问题的
 	c.last()
+
+	// 修复
+	if c.stack[len(c.stack)-1].count() == 0 && len(c.stack) > 1 {
+		c.prev()
+	}
+
 	k, v, flags := c.keyValue()
 	if (flags & uint32(bucketLeafFlag)) != 0 {
 		return k, nil
@@ -85,29 +100,36 @@ func (c *Cursor) Next() (key []byte, value []byte) {
 func (c *Cursor) Prev() (key []byte, value []byte) {
 	_assert(c.bucket.tx.db != nil, "tx closed")
 
+	k, v, flags := c.prev()
+	if (flags & uint32(bucketLeafFlag)) != 0 {
+		return k, nil
+	}
+	return k, v
+}
+
+func (c *Cursor) prev() (key []byte, value []byte, flags uint32) {
 	// Attempt to move back one element until we're successful.
 	// Move up the stack as we hit the beginning of each page in our stack.
 	for i := len(c.stack) - 1; i >= 0; i-- {
 		elem := &c.stack[i]
 		if elem.index > 0 {
+			// 叶子节点向左找就是上一个元素
 			elem.index--
 			break
 		}
+		// 如果没有左边没有元素了就回到上一层的索引节点
 		c.stack = c.stack[:i]
 	}
 
 	// If we've hit the end then return nil.
 	if len(c.stack) == 0 {
-		return nil, nil
+		return nil, nil, 0
 	}
 
 	// Move down the stack to find the last element of the last leaf under this branch.
+	// 如果是索引节点，last是会定位到最后一页的的最后一个元素
 	c.last()
-	k, v, flags := c.keyValue()
-	if (flags & uint32(bucketLeafFlag)) != 0 {
-		return k, nil
-	}
-	return k, v
+	return c.keyValue()
 }
 
 // Seek moves the cursor to a given key and returns it.
@@ -118,6 +140,8 @@ func (c *Cursor) Seek(seek []byte) (key []byte, value []byte) {
 	k, v, flags := c.seek(seek)
 
 	// If we ended up after the last element of a page then move to the next one.
+	// 正常c.seek返回的是给定的key所在的位置，如果没有找到就下一个元素的index，
+	// 如果在这个页都没有找到，那么index已经超了当前页最大数，那么下一个就应该是下一个页的第一个c.next
 	if ref := &c.stack[len(c.stack)-1]; ref.index >= ref.count() {
 		k, v, flags = c.next()
 	}
@@ -163,6 +187,7 @@ func (c *Cursor) seek(seek []byte) (key []byte, value []byte, flags uint32) {
 }
 
 // first moves the cursor to the first leaf element under the last page in the stack.
+// 每个桶都是一个b+树，从b+树的根节点出发一直找到叶子节点，最左侧就是这个b+树的第一个元素
 func (c *Cursor) first() {
 	for {
 		// Exit when we hit a leaf page.
@@ -209,7 +234,13 @@ func (c *Cursor) last() {
 
 // next moves to the next leaf element and returns the key and value.
 // If the cursor is at the last leaf element then it stays there and returns nil.
+// 从栈顶的叶子节点接续往下找（也就是从b+树最底部往上挨个遍历索引节点）直到找到第一个不为空的叶子节点
+// 配合图更好看出来: bucket存储图片.png
+// @question：这是不是后序遍历？
 func (c *Cursor) next() (key []byte, value []byte, flags uint32) {
+	// 如果叶子节点第一个元素为空，那就往右找
+	// 如果都为空，就往上回到索引节点，往右找到下一个索引元素，然后在去到叶子节点
+	// 以此循环遍历，直到找到第一个有值的叶子节点为止
 	for {
 		// Attempt to move over one element until we're successful.
 		// Move up the stack as we hit the end of each page in our stack.
@@ -255,12 +286,13 @@ func (c *Cursor) search(key []byte, pgid pgid) {
 	c.stack = append(c.stack, e)
 
 	// If we're on a leaf page/node then find the specific node.
+	// 如果已经是叶子节点，就去叶子节点遍历就行
 	if e.isLeaf() {
 		c.nsearch(key)
 		return
 	}
 
-	//@question: 这里应该是索引节点才会走到这里，还没有追踪到这段代码，先不看
+	// 如果是索引节点，就接续找下一级一直递归找到叶子节点
 	if n != nil {
 		c.searchNode(key, n)
 		return
@@ -317,6 +349,7 @@ func (c *Cursor) searchPage(key []byte, p *page) {
 }
 
 // nsearch searches the leaf node on the top of the stack for a key.
+// 从叶子节点搜索 key
 func (c *Cursor) nsearch(key []byte) {
 	e := &c.stack[len(c.stack)-1]
 	p, n := e.page, e.node
@@ -380,7 +413,9 @@ func (c *Cursor) node() *node {
 	if n == nil {
 		n = c.bucket.node(c.stack[0].page.id, nil)
 	}
-	//@question：从栈底部的根节点开始，一直找到最顶节点，为了什么，为了加载父子级结构吗？为了把 page 转成 node？
+	//@question：从栈底部的根节点开始，一直找到栈顶部，为了什么，为了加载父子级结构吗？为了把 page 转成 node？
+	// 如果想要找最顶层的页节点，直接 n = c.stack[len(c.stack)-1] 就行了
+	// 是不是和 ref.index 有关，有可能栈顶不是叶子节点，所以通过索引节点的 index 重新找对应的叶子节点？
 	for _, ref := range c.stack[:len(c.stack)-1] {
 		_assert(!n.isLeaf, "expected branch node")
 		n = n.childAt(ref.index)

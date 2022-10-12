@@ -103,15 +103,16 @@ func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
 type branchPageElement struct {
-	pos   uint32
-	ksize uint32
-	pgid  pgid
+	pos   uint32 // key 相对于当前索引元素的位置,
+	ksize uint32 // key的长度
+	pgid  pgid   // 当前索引节点元素指向的下一页的页id，下一页有可能是索引节点也有可能是叶子节点
 }
 
 // key returns a byte slice of the node key.
 func (n *branchPageElement) key() []byte {
 	// 在这个索引元素里找到他的key
-	//@question: 猜测key存在哪里？ 一个页前半部分是 branchPageElement 数组，后半部分是key，通过 branchPageElement 里的位置可以找到key？
+	//一个页前半部分是 branchPageElement 数组，后半部分是key，通过 branchPageElement 里的 pos + ksize 可以找到key
+	// 图：https://jaydenwen123.github.io/boltdb/imgs/%E9%9D%9E%E5%8F%B6%E5%AD%90%E8%8A%82%E7%82%B9%E5%AD%98%E5%82%A8.png
 	return unsafeByteSlice(unsafe.Pointer(n), 0, int(n.pos), int(n.pos)+int(n.ksize))
 }
 

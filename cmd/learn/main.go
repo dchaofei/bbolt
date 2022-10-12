@@ -27,23 +27,29 @@ func main() {
 	defer db.Close()
 
 	tx, err := db.Begin(true)
-	//c, err := tx.CreateBucketIfNotExists([]byte("a"))
-	//checkErr(err)
-	//_ = c
-	//
-	//c2, err := tx.CreateBucketIfNotExists([]byte("b"))
-	//checkErr(err)
-	//_ = c2
-	//
-	//c3, err := tx.CreateBucketIfNotExists([]byte("f"))
-	//checkErr(err)
-	//_ = c3
+	c, err := tx.CreateBucketIfNotExists([]byte("a"))
+	checkErr(err)
+	_ = c
+
+	c2, err := tx.CreateBucketIfNotExists([]byte("b"))
+	checkErr(err)
+	_ = c2
+
+	c3, err := tx.CreateBucketIfNotExists([]byte("f"))
+	checkErr(err)
+
+	_, err = c3.CreateBucketIfNotExists([]byte("inlinef_backet"))
+	checkErr(err)
+	_ = c3
 
 	b4, err := tx.CreateBucketIfNotExists([]byte("d"))
 	checkErr(err)
-	//b4.CreateBucket([]byte("a"))
+	b4.Put([]byte("key1"), []byte("value1"))
+	b4.Put([]byte("key2"), []byte("value3"))
+	b4.Put([]byte("key4"), []byte("value4"))
+	b4.Get(([]byte("key4")))
 
-	b4.CreateBucket([]byte("dd"))
+	//b4.CreateBucket([]byte("dd"))
 	//
 	//err = b4.Put([]byte("dd"), []byte("ddvalue"))
 	//checkErr(err)

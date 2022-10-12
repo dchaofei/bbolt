@@ -496,19 +496,19 @@ func (db *DB) init() error {
 	// 为什么分配 4 页的容量?
 	// 前两页是meta页
 	buf := make([]byte, db.pageSize*4)
-	fmt.Printf("buf start:%p  end:%#x \n", buf, unsafe.Pointer(&buf[0]))
+	//fmt.Printf("buf start:%p  end:%#x \n", buf, unsafe.Pointer(&buf[0]))
 	// 前两页是 meta
 	for i := 0; i < 2; i++ {
 		// 把之前申请的 buf 分配到 页
 		p := db.pageInBuffer(buf, pgid(i))
-		fmt.Printf("pageAddress p%d %p %#x %#x\n", i, p, int64(uintptr(unsafe.Pointer(&buf[0]))+uintptr(i)*uintptr(db.pageSize)), unsafe.Pointer(p))
+		//fmt.Printf("pageAddress p%d %p %#x %#x\n", i, p, int64(uintptr(unsafe.Pointer(&buf[0]))+uintptr(i)*uintptr(db.pageSize)), unsafe.Pointer(p))
 		p.id = pgid(i)
 		p.flags = metaPageFlag
 
 		// Initialize the meta page.
 		// 分配meta结构的内存
 		m := p.meta()
-		fmt.Printf("metaAddress m%d %p %#x\n", i, m, int64(uintptr(unsafe.Pointer(&buf[0]))+unsafe.Sizeof(*p)+uintptr(i)*uintptr(db.pageSize)))
+		//fmt.Printf("metaAddress m%d %p %#x\n", i, m, int64(uintptr(unsafe.Pointer(&buf[0]))+unsafe.Sizeof(*p)+uintptr(i)*uintptr(db.pageSize)))
 		m.magic = magic
 		m.version = version
 		m.pageSize = uint32(db.pageSize)
