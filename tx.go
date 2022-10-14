@@ -150,6 +150,7 @@ func (tx *Tx) Commit() error {
 
 	// Rebalance nodes which have had deletions.
 	var startTime = time.Now()
+	// 重新平衡 b+ 树
 	tx.root.rebalance()
 	if tx.stats.Rebalance > 0 {
 		tx.stats.RebalanceTime += time.Since(startTime)
@@ -157,6 +158,7 @@ func (tx *Tx) Commit() error {
 
 	// spill data onto dirty pages.
 	startTime = time.Now()
+	// 把节点写入到 page
 	if err := tx.root.spill(); err != nil {
 		tx.rollback()
 		return err
@@ -167,6 +169,7 @@ func (tx *Tx) Commit() error {
 	tx.meta.root.root = tx.root.root
 
 	// Free the old freelist because commit writes out a fresh freelist.
+	// 释放空闲页，commit会重新整理空闲列表
 	if tx.meta.freelist != pgidNoFreelist {
 		tx.db.freelist.free(tx.meta.txid, tx.db.page(tx.meta.freelist))
 	}
@@ -221,15 +224,20 @@ func (tx *Tx) Commit() error {
 	return nil
 }
 
+// 分配新的空闲列表
 func (tx *Tx) commitFreelist() error {
 	// Allocate new pages for the new free list. This will overestimate
 	// the size of the freelist but not underestimate the size (which would be bad).
 	opgid := tx.meta.pgid
+	// 分配空闲列表页
+	// @question: 为什么可以多分配一页呢？为什么高估一页呢？
 	p, err := tx.allocate((tx.db.freelist.size() / tx.db.pageSize) + 1)
 	if err != nil {
 		tx.rollback()
 		return err
 	}
+
+	// 把空闲列表写入到分配的页
 	if err := tx.db.freelist.write(p); err != nil {
 		tx.rollback()
 		return err
@@ -500,6 +508,7 @@ func (tx *Tx) allocate(count int) (*page, error) {
 	}
 
 	// Save to our page cache.
+	// 保存页id到页的映射，p所占的内存是程序临时分配的
 	tx.pages[p.id] = p
 
 	// Update statistics.

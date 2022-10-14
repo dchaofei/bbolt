@@ -19,7 +19,10 @@ func (f *freelist) hashmapAllocate(txid txid, n int) pgid {
 	}
 
 	// if we have a exact size match just return short path
+	// 如果 freemaps 里有相同长度的连续页，直接拿来用
 	if bm, ok := f.freemaps[uint64(n)]; ok {
+		// 这里循环删除不太科学吧，不应该从 bm 列表里取一个用 删掉吗？怎么把所有连续页都删了？？？
+		// 哈哈 我看错了，循环里有个 return，也就是说取到第一个删掉就 return 了
 		for pid := range bm {
 			// remove the span
 			f.delSpan(pid, uint64(n))
@@ -34,6 +37,7 @@ func (f *freelist) hashmapAllocate(txid txid, n int) pgid {
 	}
 
 	// lookup the map to find larger span
+	// 找到一个大于 n 的连续页，从中截取需要的长度
 	for size, bm := range f.freemaps {
 		if size < uint64(n) {
 			continue
@@ -45,9 +49,11 @@ func (f *freelist) hashmapAllocate(txid txid, n int) pgid {
 
 			f.allocs[pid] = txid
 
+			// 剩余的连续页长度
 			remain := size - uint64(n)
 
 			// add remain span
+			// 把剩余的连续页添加到 span
 			f.addSpan(pid+pgid(n), remain)
 
 			for i := pgid(0); i < pgid(n); i++ {

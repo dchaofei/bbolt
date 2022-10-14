@@ -9,7 +9,8 @@ import (
 // txPending holds a list of pgids and corresponding allocation txns
 // that are pending to be freed.
 type txPending struct {
-	ids              []pgid
+	ids []pgid //@question: 等待释放到空闲列表的页（可能页被删了，所以需要放到空闲列表里下次使用），应该是事务 commit 时会释放
+	// @question: 是给分配当前页的事务id, 应该与 ids 是一一对应的
 	alloctx          []txid // txids allocating the ids
 	lastReleaseBegin txid   // beginning txid of last matching releaseRange
 }
@@ -20,11 +21,13 @@ type pidSet map[pgid]struct{}
 // freelist represents a list of all pages that are available for allocation.
 // It also tracks pages that have been freed but are still in use by open transactions.
 type freelist struct {
-	freelistType FreelistType        // freelist type
-	ids          []pgid              // all free and available free page ids.
-	allocs       map[pgid]txid       // mapping of txid that allocated a pgid.
-	pending      map[txid]*txPending // mapping of soon-to-be free page ids by tx.
-	cache        map[pgid]bool       // fast lookup of all free and pending page ids.
+	freelistType FreelistType // freelist type
+	ids          []pgid       // all free and available free page ids.
+	// @question 分配的页与 txid 的映射，如果一次分配多个连续页，只记录连续开始页id 为什么？有什么用
+	// 是因为一次分配多个页，只有第一页有id，剩余的是溢出页只是为了扩展连续页开始页的大小
+	allocs  map[pgid]txid       // mapping of txid that allocated a pgid.
+	pending map[txid]*txPending // mapping of soon-to-be free page ids by tx.  // 当前事务中在等待被释放的页
+	cache   map[pgid]bool       // fast lookup of all free and pending page ids.  标记这个页是不是空闲的,目前看到释放某个页时会标记为true
 
 	// 存储连续页面， key是有几个连续页面，value 是连续页面开始的pid集合
 	// 比如有以下页面id：1,2,3,4, 8,9,10,11 15,16
@@ -80,9 +83,12 @@ func newFreelist(freelistType FreelistType) *freelist {
 
 // size returns the size of the page after serialization.
 func (f *freelist) size() int {
+	// 空闲页数量
 	n := f.count()
+	// 因为 p.count 是 uint16 大小，所以最大元素数是0xFFFF
 	if n >= 0xFFFF {
 		// The first element will be used to store the count. See freelist.write.
+		// 因为最大只能存取 uint16 0xFFFF 个元素，所以空闲列表ids第一个元素将用于存储计数，不再使用count来存储计数
 		n++
 	}
 	return int(pageHeaderSize) + (int(unsafe.Sizeof(pgid(0))) * n)
@@ -132,27 +138,34 @@ func (f *freelist) arrayAllocate(txid txid, n int) pgid {
 		}
 
 		// Reset initial page if this is not contiguous.
+		// 当前给的页id-上一页的id!=1 就说明不是连续页
+		// 用当前给的页当作连续页的首个
 		if previd == 0 || id-previd != 1 {
 			initial = id
 		}
 
 		// If we found a contiguous block then remove it and return it.
+		// 找到了足够的连续页，从空闲列表中删除这些连续页
 		if (id-initial)+1 == pgid(n) {
-			// If we're allocating off the beginning then take the fast path
-			// and just adjust the existing slice. This will use extra memory
-			// temporarily but the append() in free() will realloc the slice
-			// as is necessary.
+			//If we're allocating off the beginning then take the fast path
+			//and just adjust the existing slice. This will use extra memory
+			//temporarily but the append() in free() will realloc the slice
+			//as is necessary.
 			if (i + 1) == n {
+				// 如果从数组首为到现在都是连续页，直接快速删除，不会分配内存
 				f.ids = f.ids[i+1:]
 			} else {
-				copy(f.ids[i-n+1:], f.ids[i+1:])
-				f.ids = f.ids[:len(f.ids)-n]
+				// 这种应该是从中间找到的空闲连续页
+				copy(f.ids[i-n+1:], f.ids[i+1:]) // 把后边的页拷贝到前边，覆盖中间要删除的连续页，这种应也不会重新分配内存
+				f.ids = f.ids[:len(f.ids)-n]     // 然后截取-n
 			}
 
 			// Remove from the free cache.
+			// 从空闲缓存中删除这些页
 			for i := pgid(0); i < pgid(n); i++ {
 				delete(f.cache, initial+i)
 			}
+			// @question: 分配的连续页的开始页与 txid 的映射？ 为什么？
 			f.allocs[initial] = txid
 			return initial
 		}
@@ -180,18 +193,20 @@ func (f *freelist) free(txid txid, p *page) {
 		delete(f.allocs, p.id)
 	} else if (p.flags & freelistPageFlag) != 0 {
 		// Freelist is always allocated by prior tx.
+		// @question: 空闲列表页是由先前的事务分配的, 猜测每次事务提交都会重新刷新页，随机选一个空闲页作为空闲列表页
 		allocTxid = txid - 1
 	}
 
+	// 溢出页也要一起释放
 	for id := p.id; id <= p.id+pgid(p.overflow); id++ {
 		// Verify that page is not already free.
 		if f.cache[id] {
 			panic(fmt.Sprintf("page %d already freed", id))
 		}
 		// Add to the freelist and cache.
-		txp.ids = append(txp.ids, id)
-		txp.alloctx = append(txp.alloctx, allocTxid)
-		f.cache[id] = true
+		txp.ids = append(txp.ids, id)                // 把当前页id加到待释放数组，等待释放
+		txp.alloctx = append(txp.alloctx, allocTxid) // 把分配这个页的事务与这个页关联
+		f.cache[id] = true                           // 标记当前页已空闲
 	}
 }
 
@@ -285,7 +300,7 @@ func (f *freelist) read(p *page) {
 	var idx, count = 0, int(p.count)
 	if count == 0xFFFF {
 		idx = 1
-		// 如果空闲页个数超出了 0xFFFF（因为page.count 是 uint64 最大是 0xFFFF），那么空闲数组的第一个元素将存储的是空闲页的个数，负责数组的个数存在 page.count
+		// 如果空闲页个数超出了 0xFFFF（因为page.count 是 uint16 最大是 0xFFFF 65535），那么空闲数组的第一个元素将存储的是空闲页的个数，负责数组的个数存在 page.count
 		// https://jaydenwen123.github.io/boltdb/chapter2/%E7%A9%BA%E9%97%B2%E5%88%97%E8%A1%A8%E9%A1%B5.html
 		c := *(*pgid)(unsafeAdd(unsafe.Pointer(p), unsafe.Sizeof(*p)))
 		count = int(c)

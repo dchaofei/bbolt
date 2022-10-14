@@ -32,7 +32,7 @@ type page struct {
 	id       pgid
 	flags    uint16 // 标志位，不同类型的页面用不同的标志位来区分。分为：metaPageFlag、freelistPageFlag、branchPageFlag、leafPageFlag。
 	count    uint16 // 页面中存储的数据数量，仅在页面类型是branch以及leaf的时候起作用。
-	overflow uint32
+	overflow uint32 // 溢出的页数量，为了表示后边还有多少连续页可用，直接拿当前页的最后位置+页大小就可以取下一个连续页了， 具体分配代码 (db *DB) allocate
 }
 
 // typ returns a human readable page type string used for debugging.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	bolt "go.etcd.io/bbolt"
 	"log"
 	"time"
@@ -12,7 +11,7 @@ func main() {
 	db, err := bolt.Open("my.db", 0600, &bolt.Options{
 		Timeout:        3 * time.Second,
 		NoGrowSync:     false,
-		NoFreelistSync: false,
+		NoFreelistSync: true,
 		FreelistType:   "",
 		ReadOnly:       false,
 		MmapFlags:      0,
@@ -27,33 +26,18 @@ func main() {
 	defer db.Close()
 
 	tx, err := db.Begin(true)
-	c, err := tx.CreateBucketIfNotExists([]byte("a"))
+	a1, err := tx.CreateBucketIfNotExists([]byte("a"))
+	a1.Put([]byte("1"), []byte("1"))
+	a1.Put([]byte("2"), []byte("2"))
 	checkErr(err)
-	_ = c
-
-	c2, err := tx.CreateBucketIfNotExists([]byte("b"))
+	a2, err := a1.CreateBucketIfNotExists([]byte("a1"))
 	checkErr(err)
-	_ = c2
+	a2.Put([]byte("1"), []byte("1"))
+	a2.Put([]byte("2"), []byte("3"))
+	a2.Put([]byte("2"), []byte("4"))
 
-	c3, err := tx.CreateBucketIfNotExists([]byte("f"))
+	//err = tx.DeleteBucket([]byte("a"))
 	checkErr(err)
-
-	_, err = c3.CreateBucketIfNotExists([]byte("inlinef_backet"))
-	checkErr(err)
-	_ = c3
-
-	b4, err := tx.CreateBucketIfNotExists([]byte("d"))
-	checkErr(err)
-	b4.Put([]byte("key1"), []byte("value1"))
-	b4.Put([]byte("key2"), []byte("value3"))
-	b4.Put([]byte("key4"), []byte("value4"))
-	b4.Get(([]byte("key4")))
-
-	//b4.CreateBucket([]byte("dd"))
-	//
-	//err = b4.Put([]byte("dd"), []byte("ddvalue"))
-	//checkErr(err)
-	_ = b4
 
 	//err = c.Put([]byte("aa"), []byte("bb"))
 	//err = c.Put([]byte("cc"), []byte("bb"))
@@ -73,7 +57,7 @@ func main() {
 	//err = c.Put([]byte("ff"), []byte("bb"))
 	//checkErr(err)
 	//checkErr(tx.Commit())
-	fmt.Println("test")
+	//fmt.Println("test")
 	//err = db.Update(func(tx *bolt.Tx) error {
 	//	_, err := tx.CreateBucket([]byte("ding"))
 	//	return err

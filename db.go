@@ -294,7 +294,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 	// Flush freelist when transitioning from no sync to sync so
 	// NoFreelistSync unaware boltdb can open the db later.
-	//@question: 这个场景怎么复现？
+	// 如果 NoFreelistSync 设置为了 true, 保存的 db 文件是没有空闲列表的，需要重新生成空闲列表
 	if !db.NoFreelistSync && !db.hasSyncedFreelist() {
 		tx, err := db.Begin(true)
 		if tx != nil {
@@ -348,6 +348,7 @@ func (db *DB) mmap(minsz int) error {
 	// Ensure the size is at least the minimum size.
 	fileSize := int(info.Size())
 	var size = fileSize
+
 	if size < minsz {
 		size = minsz
 	}
@@ -428,9 +429,8 @@ func (db *DB) munmap() error {
 // 当然不能超过最大值 maxMapSize
 func (db *DB) mmapSize(size int) (int, error) {
 	// Double the size from 32KB until 1GB.
-	// 1<15 是32kb，以此是 64、128....1GB
+	// 1<15 是32kb，以此是 64、128....1GB 也就是翻倍递增
 	// 这里是不是可以提前判断如果size大于1<<30,直接走1gb递增？
-	// 另外这里是不是可以不用循环，直接判断size当前大小？
 	for i := uint(15); i <= 30; i++ {
 		if size <= 1<<i {
 			return 1 << i, nil
@@ -444,7 +444,7 @@ func (db *DB) mmapSize(size int) (int, error) {
 
 	// If larger than 1GB then grow by 1GB at a time.
 	sz := int64(size)
-	// 每次递增到下一个1gb， 比如当前是(3gb-1),那么下一个得到结果就是3gb
+	// 每次递增到下一个1gb， 比如当前是(3gb-1k),那么下一个得到结果就是3gb
 	if remainder := sz % int64(maxMmapStep); remainder > 0 {
 		sz += int64(maxMmapStep) - remainder
 	}
@@ -1001,32 +1001,42 @@ func (db *DB) meta() *meta {
 }
 
 // allocate returns a contiguous block of memory starting at a given page.
+// 根据 count 页个数分配连续页
 func (db *DB) allocate(txid txid, count int) (*page, error) {
 	// Allocate a temporary buffer for the page.
 	var buf []byte
 	if count == 1 {
+		// 如果只有一个页直接从 pool 里分配，那如果是多个页为什么不多取几次 pool 呢？因为慢，直接 make 一次分配足够的页
 		buf = db.pagePool.Get().([]byte)
 	} else {
 		buf = make([]byte, count*db.pageSize)
 	}
 	p := (*page)(unsafe.Pointer(&buf[0]))
+	// 溢出了几页，溢出的页是连续页大小空间
 	p.overflow = uint32(count - 1)
 
 	// Use pages from the freelist if they are available.
+	// 看看有没有空闲的 count 个数的连续页，有的话直接使用
 	if p.id = db.freelist.allocate(txid, count); p.id != 0 {
 		return p, nil
 	}
 
 	// Resize mmap() if we're at the end.
+	// 当前总页数+需要申请的页数+1 * 页大小就是新的 mmap 大小
+	// @question: +1 是多申请一页吗？
 	p.id = db.rwtx.meta.pgid
 	var minsz = int((p.id+pgid(count))+1) * db.pageSize
+	// @question：这里又为什么是大于等于，不应该是大于吗？
 	if minsz >= db.datasz {
+		// @question: https://www.cnblogs.com/huxiao-tee/p/4660352.html 这篇文章中说哦 如果映射大小大于原始文件的大小，超出文件所占物理页是不能读写的，所以这里？
+		// 怀疑后续会扩充文件大小吧，因为只要保证读取mmap数据时文件扩充到了mmap大小就不会有问题
 		if err := db.mmap(minsz); err != nil {
 			return nil, fmt.Errorf("mmap allocate error: %s", err)
 		}
 	}
 
 	// Move the page id high water mark.
+	// 把总页面数+count
 	db.rwtx.meta.pgid += pgid(count)
 
 	return p, nil
@@ -1118,6 +1128,7 @@ type Options struct {
 
 	// Do not sync freelist to disk. This improves the database write performance
 	// under normal operation, but requires a full database re-sync during recovery.
+	// 这个设置为 true，会导致 save db 文件时不会保存空闲列表，每次 opendb 时会重新加载生成空闲列表
 	NoFreelistSync bool
 
 	// FreelistType sets the backend freelist type. There are two options. Array which is simple but endures
@@ -1215,7 +1226,7 @@ type meta struct {
 	flags    uint32 // 4
 	root     bucket // 16 根 bucket
 	freelist pgid   // 8
-	pgid     pgid   // 8 保存当前总的页面数量，即最大页面号加一。
+	pgid     pgid   // 8 保存当前总的页面数量，即最大页面号加一，因为页面id是从0开始
 	txid     txid   // 8 上一次写数据库的事务ID，可以看作是当前boltdb的修改版本号，每次写数据库时加1，只读时不改变
 	checksum uint64 // 8
 }

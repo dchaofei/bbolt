@@ -29,10 +29,10 @@ const DefaultFillPercent = 0.5
 type Bucket struct {
 	*bucket
 	tx       *Tx                // the associated transaction
-	buckets  map[string]*Bucket // subbucket cache
-	page     *page              // inline page reference
-	rootNode *node              // materialized node for the root page.
-	nodes    map[pgid]*node     // node cache
+	buckets  map[string]*Bucket // subbucket cache 子桶缓存
+	page     *page              // inline page reference 内敛页引用
+	rootNode *node              // materialized node for the root page. // 根节点，也就是当前桶的上级页
+	nodes    map[pgid]*node     // node cache 节点缓存
 
 	// Sets the threshold for filling nodes when they split. By default,
 	// the bucket will fill to 50% but it can be useful to increase this
@@ -229,6 +229,7 @@ func (b *Bucket) DeleteBucket(key []byte) error {
 
 	// Recursively delete all child buckets.
 	child := b.Bucket(key)
+	// 递归删除子桶
 	err := child.ForEach(func(k, v []byte) error {
 		if _, _, childFlags := child.Cursor().seek(k); (childFlags & bucketLeafFlag) != 0 {
 			if err := child.DeleteBucket(k); err != nil {
@@ -523,6 +524,7 @@ func (b *Bucket) _forEachPageNode(pgid pgid, depth int, fn func(*page, *node, in
 }
 
 // spill writes all the nodes for this bucket to dirty pages.
+// 把节点数据，分配好所属页，写入到 page
 func (b *Bucket) spill() error {
 	// Spill all child buckets first.
 	for name, child := range b.buckets {
@@ -630,6 +632,7 @@ func (b *Bucket) write() []byte {
 }
 
 // rebalance attempts to balance all nodes.
+// @question: 这就是对 b+ 树进行重新平衡吧？ 需要再研究一下这个数据结构
 func (b *Bucket) rebalance() {
 	for _, n := range b.nodes {
 		n.rebalance()
@@ -673,6 +676,7 @@ func (b *Bucket) node(pgid pgid, parent *node) *node {
 }
 
 // free recursively frees all pages in the bucket.
+// 释放桶中的所有页面
 func (b *Bucket) free() {
 	if b.root == 0 {
 		return
