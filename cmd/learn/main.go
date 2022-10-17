@@ -39,12 +39,12 @@ func main() {
 	//err = tx.DeleteBucket([]byte("a"))
 	checkErr(err)
 
-	for i := 0; i <= 1005000; i++ {
-		bbb := make([]byte, 8)
-		binary.BigEndian.PutUint64(bbb, uint64(i))
-		err = a1.Put(bbb, []byte(bbb))
-		a1.Put([]byte("aaa"), []byte("aaa"))
-	}
+	//for i := 0; i <= 1005000; i++ {
+	//	bbb := make([]byte, 8)
+	//	binary.BigEndian.PutUint64(bbb, uint64(i))
+	//	err = a1.Put(bbb, []byte(bbb))
+	//	a1.Put([]byte("aaa"), []byte("aaa"))
+	//}
 	//checkErr(err)
 	checkErr(tx.Commit())
 	//
