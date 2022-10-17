@@ -185,6 +185,7 @@ func (tx *Tx) Commit() error {
 
 	// Write dirty pages to disk.
 	startTime = time.Now()
+	// 写入到硬盘
 	if err := tx.write(); err != nil {
 		tx.rollback()
 		return err
@@ -531,6 +532,7 @@ func (tx *Tx) write() error {
 
 	// Write pages to disk in order.
 	for _, p := range pages {
+		// 如果 overflow 是 0， 就是没有溢出页 这里 +1 是分配当前页的空间
 		rem := (uint64(p.overflow) + 1) * uint64(tx.db.pageSize)
 		offset := int64(p.id) * int64(tx.db.pageSize)
 		var written uintptr
@@ -594,6 +596,7 @@ func (tx *Tx) writeMeta() error {
 	// Create a temporary buffer for the meta page.
 	buf := make([]byte, tx.db.pageSize)
 	p := tx.db.pageInBuffer(buf, 0)
+	//os.Exit(0)
 	tx.meta.write(p)
 
 	// Write the meta page to file.

@@ -9,15 +9,15 @@ import (
 
 func main() {
 	db, err := bolt.Open("my.db", 0600, &bolt.Options{
-		Timeout:        3 * time.Second,
-		NoGrowSync:     false,
-		NoFreelistSync: true,
-		FreelistType:   "",
-		ReadOnly:       false,
-		MmapFlags:      0,
-		NoSync:         false,
-		OpenFile:       nil,
-		Mlock:          false,
+		Timeout: 3 * time.Second,
+		//NoGrowSync:     false,
+		//NoFreelistSync: false,
+		//FreelistType:   "",
+		//ReadOnly:       false,
+		//MmapFlags:      0,
+		//NoSync:         false,
+		//OpenFile:       nil,
+		//Mlock:          false,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -39,11 +39,12 @@ func main() {
 	//err = tx.DeleteBucket([]byte("a"))
 	checkErr(err)
 
-	//err = c.Put([]byte("aa"), []byte("bb"))
-	//err = c.Put([]byte("cc"), []byte("bb"))
-	//err = c.Put([]byte("dd"), []byte("bb"))
-	//err = c.Put([]byte("ee"), []byte("bb"))
-	//err = c.Put([]byte("ff"), []byte("bb"))
+	for i := 0; i <= 1005000; i++ {
+		bbb := make([]byte, 8)
+		binary.BigEndian.PutUint64(bbb, uint64(i))
+		err = a1.Put(bbb, []byte(bbb))
+		a1.Put([]byte("aaa"), []byte("aaa"))
+	}
 	//checkErr(err)
 	checkErr(tx.Commit())
 	//

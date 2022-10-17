@@ -387,7 +387,7 @@ func (n *node) spill() error {
 	for _, node := range nodes {
 		// Add node's page to the freelist if it's not new.
 		// 新页面 pgid 是 0，不是新页面就把这个页释放掉，然后把 pgid 置为 0
-		// 是为了重新分配内存吧 因为不能修改原来的 mmap 映射的内存
+		// 其实就是写事务就是写到新的页面(从 freelist 或重新分配内存)，防止断电未提交时db文件格式错误, 断电后依然可以从 meta 找到旧的页面和数据
 		if node.pgid > 0 {
 			tx.db.freelist.free(tx.meta.txid, tx.page(node.pgid))
 			node.pgid = 0
@@ -460,7 +460,8 @@ func (n *node) rebalance() {
 
 	// Root node has special handling.
 	if n.parent == nil {
-		// If root node is a branch and only has one node then collapse it. 如果根节点是分支节点并且节点数为1，那就把下一个节点提升为根节点
+		// If root node is a branch and only has one node then collapse it.
+		// 如果根节点是分支节点并且节点数为1，那就把下一个节点提升为根节点
 		if !n.isLeaf && len(n.inodes) == 1 {
 			// Move root's child up.
 			child := n.bucket.node(n.inodes[0].pgid, n)
@@ -468,7 +469,7 @@ func (n *node) rebalance() {
 			n.inodes = child.inodes[:]
 			n.children = child.children
 
-			// Reparent all child nodes being moved.  因为他们的父几点被删除了，提升为了根节点，所以把 parent 指向根节点
+			// Reparent all child nodes being moved.  因为他们的父节点被删除了，提升为了根节点，所以把 parent 指向根节点
 			for _, inode := range n.inodes {
 				if child, ok := n.bucket.nodes[inode.pgid]; ok {
 					child.parent = n

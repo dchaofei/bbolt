@@ -26,7 +26,7 @@ type freelist struct {
 	// @question 分配的页与 txid 的映射，如果一次分配多个连续页，只记录连续开始页id 为什么？有什么用
 	// 是因为一次分配多个页，只有第一页有id，剩余的是溢出页只是为了扩展连续页开始页的大小
 	allocs  map[pgid]txid       // mapping of txid that allocated a pgid.
-	pending map[txid]*txPending // mapping of soon-to-be free page ids by tx.  // 当前事务中在等待被释放的页
+	pending map[txid]*txPending // mapping of soon-to-be free page ids by tx.  // 当前事务中在等待被释放的页，属于空闲页
 	cache   map[pgid]bool       // fast lookup of all free and pending page ids.  标记这个页是不是空闲的,目前看到释放某个页时会标记为true
 
 	// 存储连续页面， key是有几个连续页面，value 是连续页面开始的pid集合
@@ -361,6 +361,7 @@ func (f *freelist) write(p *page) error {
 		unsafeSlice(unsafe.Pointer(&ids), data, l)
 		f.copyall(ids)
 	} else {
+		// count 是 uint16 类型，真实的空闲id数量已经超过了 count， 所以把 空闲id列表 的第一个元素作为 count
 		p.count = 0xFFFF
 		var ids []pgid
 		data := unsafeAdd(unsafe.Pointer(p), unsafe.Sizeof(*p))

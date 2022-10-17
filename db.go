@@ -138,7 +138,7 @@ type DB struct {
 	pageSize int
 	opened   bool
 	rwtx     *Tx   // 当前处于读写的事务
-	txs      []*Tx // 只读事物事务集合
+	txs      []*Tx // 只读事务集合
 	stats    Stats
 
 	freelist     *freelist
@@ -316,7 +316,8 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 func (db *DB) loadFreelist() {
 	db.freelistLoad.Do(func() {
 		db.freelist = newFreelist(db.FreelistType)
-		//@question: 怎么走 !db.hasSyncedFreelist 这个场景？
+		// 怎么走 !db.hasSyncedFreelist 这个场景？
+		// 设置了 db NoFreelistSync 选项，事务提交后不会把 freelist 保存到磁盘，所以需要启动时重新加载 freelist
 		if !db.hasSyncedFreelist() {
 			// Reconstruct free list by scanning the DB.
 			db.freelist.readIDs(db.freepages())
@@ -1028,8 +1029,8 @@ func (db *DB) allocate(txid txid, count int) (*page, error) {
 	var minsz = int((p.id+pgid(count))+1) * db.pageSize
 	// @question：这里又为什么是大于等于，不应该是大于吗？
 	if minsz >= db.datasz {
-		// @question: https://www.cnblogs.com/huxiao-tee/p/4660352.html 这篇文章中说哦 如果映射大小大于原始文件的大小，超出文件所占物理页是不能读写的，所以这里？
-		// 怀疑后续会扩充文件大小吧，因为只要保证读取mmap数据时文件扩充到了mmap大小就不会有问题
+		// https://www.cnblogs.com/huxiao-tee/p/4660352.html 这篇文章中说 如果映射大小大于原始文件的大小，超出文件所占物理页是不能读写的，所以这里？
+		// 后续提交事务时会分配了大于当前页时，文件大小会扩充的的，因为只要保证读取mmap数据时文件扩充到了mmap大小就不会有问题
 		if err := db.mmap(minsz); err != nil {
 			return nil, fmt.Errorf("mmap allocate error: %s", err)
 		}
