@@ -8,6 +8,7 @@ import (
 
 const (
 	// MaxKeySize is the maximum length of a key, in bytes.
+	// 关于限制：https://github.com/boltdb/bolt/issues/117
 	MaxKeySize = 32768
 
 	// MaxValueSize is the maximum length of a value, in bytes.

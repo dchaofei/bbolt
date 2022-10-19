@@ -25,7 +25,7 @@ type freelist struct {
 	ids          []pgid       // all free and available free page ids.
 	// @question 分配的页与 txid 的映射，如果一次分配多个连续页，只记录连续开始页id 为什么？有什么用
 	// 是因为一次分配多个页，只有第一页有id，剩余的是溢出页只是为了扩展连续页开始页的大小
-	allocs  map[pgid]txid       // mapping of txid that allocated a pgid.
+	allocs  map[pgid]txid       // mapping of txid that allocated a pgid.  已分配的页，会从 ids 和 cache 中移除
 	pending map[txid]*txPending // mapping of soon-to-be free page ids by tx.  // 当前事务中在等待被释放的页，属于空闲页, 事务回滚会删除 txid 对应的 pgid
 	cache   map[pgid]bool       // fast lookup of all free and pending page ids.  标记这个页是不是空闲的,目前看到释放某个页时会标记为true
 
@@ -165,7 +165,10 @@ func (f *freelist) arrayAllocate(txid txid, n int) pgid {
 			for i := pgid(0); i < pgid(n); i++ {
 				delete(f.cache, initial+i)
 			}
-			// @question: 分配的连续页的开始页与 txid 的映射？ 为什么？
+			// 分配的连续页的开始页与 txid 的映射？
+			// 记录分配的页与对应的事务，方便事务提交或回滚释放
+			// 为什么分配连续页时之记录开始页？
+			// 因为分配连续页，后边的页通常作为溢出页,后续释放时会判断溢出多少页，依然可以释放这些溢出页，所以不需要都记录
 			f.allocs[initial] = txid
 			return initial
 		}

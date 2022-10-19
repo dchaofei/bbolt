@@ -29,6 +29,9 @@ meta 关联起来，浪费了这么大的文件，但是如果后续开辟新页
 
 
 
+## 这个 issue 描述了 bbolt 内部结构
+https://github.com/boltdb/bolt/issues/114
+
 资料：https://jaydenwen123.github.io/boltdb/chapter3/boltdb%E7%9A%84Bucket%E7%BB%93%E6%9E%84.html
 
 图片很关键

@@ -26,15 +26,27 @@ func main() {
 	defer db.Close()
 
 	tx, err := db.Begin(true)
-	a1, err := tx.CreateBucketIfNotExists([]byte("a"))
-	a1.Put([]byte("1"), []byte("1"))
-	a1.Put([]byte("2"), []byte("2"))
-	checkErr(err)
-	a2, err := a1.CreateBucketIfNotExists([]byte("a1"))
-	checkErr(err)
+	a1, err := tx.CreateBucketIfNotExists([]byte("a1"))
+	_ = a1
+	//a1.Put([]byte("1"), []byte("1"))
+	//a1.Put([]byte("2"), []byte("2"))
+
+	a2, err := tx.CreateBucketIfNotExists([]byte("a2"))
 	a2.Put([]byte("1"), []byte("1"))
-	a2.Put([]byte("2"), []byte("3"))
-	a2.Put([]byte("2"), []byte("4"))
+	a2.Put([]byte("2"), []byte("2"))
+	checkErr(err)
+
+	a3, err := tx.CreateBucketIfNotExists([]byte("a3"))
+	a3.Put([]byte("1"), []byte("1"))
+	a3.Put([]byte("2"), []byte("2"))
+	checkErr(err)
+
+	a3_1, err := a3.CreateBucketIfNotExists([]byte("a3_1"))
+	checkErr(err)
+	a3_1.Put([]byte("1"), []byte("1"))
+	a3_1.Put([]byte("2"), []byte("3"))
+	a3_1.Put([]byte("2"), []byte("4"))
+	a3_1.CreateBucketIfNotExists([]byte("a3_1_bucket"))
 
 	//err = tx.DeleteBucket([]byte("a"))
 	checkErr(err)
